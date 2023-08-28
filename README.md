@@ -2,6 +2,7 @@
 *Kimberly Rivera1 (Orcid; kimberly.rivera22194@gmail.com; 2001 N. Clark St. Chicago, IL 60614), Mason Fidino1, Elizabeth W. Lehrer1, Holly R. Torsey2, and Seth B. Magle1 
 
 1 Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
+
 2 Community Scientist, Zooniverse, c/o Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
 
 ### 'Zooniverse_class.mod.git.R' 

@@ -1,5 +1,5 @@
 # Optimizing community science in ecology: a case study on Zooniverse’s ‘Chicago Wildlife Watch’
-*Kimberly Rivera^1 (Orcid; kimberly.rivera22194@gmail.com; 2001 N. Clark St. Chicago, IL 60614), Mason Fidino1, Elizabeth W. Lehrer1, Holly R. Torsey2, and Seth B. Magle1 
+*Kimberly Rivera(^1) (Orcid; kimberly.rivera22194@gmail.com; 2001 N. Clark St. Chicago, IL 60614), Mason Fidino1, Elizabeth W. Lehrer1, Holly R. Torsey2, and Seth B. Magle1 
 
 1Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
 2Community Scientist, Zooniverse, c/o Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA

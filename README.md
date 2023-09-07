@@ -1,12 +1,12 @@
 # Optimizing community science contributions in ecology: a case study on Zooniverse’s ‘Chicago Wildlife Watch’
-**Kimberly Rivera1* (Orcid; kimberly.rivera22194@gmail.com; 2001 N. Clark St. Chicago, IL 60614), Mason Fidino1, Elizabeth W. Lehrer1, Holly R. Torsey2, Sarah Allen3, Laura Trouille4, and Seth B. Magle1 
+**Kimberly Rivera 1* (Orcid; kimberly.rivera22194@gmail.com; 2001 N. Clark St. Chicago, IL 60614), Mason Fidino 1, Elizabeth W. Lehrer 1, Holly R. Torsey 2, Sarah Allen 3, Laura Trouille 4, and Seth B. Magle 1 
 
-1Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
-2Community Scientist, Zooniverse, c/o Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
-3Senior Front-end Engineer, Team Manager, 3dna Corp. dba NationBuilder, Los Angeles, CA, USA
-4Science Engagement Division and Zooniverse, The Adler Planetarium, Chicago, IL, USA
+1 Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
+2 Community Scientist, Zooniverse, c/o Department of Conservation and Science, Lincoln Park Zoo, Chicago, IL, USA
+3 Senior Front-end Engineer, Team Manager, 3dna Corp. dba NationBuilder, Los Angeles, CA, USA
+4 Science Engagement Division and Zooniverse, The Adler Planetarium, Chicago, IL, USA
 
-*corresponding author*
+**corresponding author*
 
 ### 'Zooniverse_class.mod.git.R' 
 This script loads in cleaned data and formats it for a binomial generalized linear model with a logit link. It also has code to plot variation in user accuracy for two retirement rules.

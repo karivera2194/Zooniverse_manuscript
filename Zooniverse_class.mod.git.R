@@ -5,7 +5,22 @@ library(lubridate) # dates
 library(dplyr)
 
 # Read-in modeling data
-model_data = data.table::fread(file = "Data/model_data.csv", data.table = FALSE)
+model_data = data.table::fread(file = "model_data.csv", data.table = FALSE)
+
+#Let's run models only for those with a zooniverse account
+model_data = model_data %>% 
+  filter(!is.na(user_id))
+
+# Read in DB info on locations
+response <- readRDS(
+  "Data/response.RDS"
+)
+
+response <- response %>% 
+  select(photoName, locationAbbr)
+
+# join data sets
+model_data <- left_join(model_data, response, by = "photoName")
 
 # Now lets model how effective the current retirement rules are-----------------
 # We will first summarise by subject_id
@@ -14,7 +29,8 @@ retire_data = model_data %>%
   group_by(subject_id) %>% 
   summarise(expertID = unique(expertID),
             our_rt = unique(our_rt),
-            final_tag = unique(final_tag))
+            final_tag = unique(final_tag),
+            locationAbbr = unique(locationAbbr))
 
 # Then update final correct tags for species groups
 retire_data = retire_data %>% 
@@ -32,18 +48,20 @@ retire_data = retire_data %>%
 retire_data$our_rt <- factor(retire_data$our_rt, levels = c("classification_count",
                                                             "3_nothing_here", "5_nothing_here", "7_species", "Human"))
 
+# Run the model
+mod_retire <- glmer(correct ~ our_rt + (1 | locationAbbr), family = "binomial"(link = "logit"), data = retire_data)
+summary(mod_retire)
 
-#Run the model
-mod_retire = glm(correct ~ our_rt, family = "binomial"(link = "logit"), data = retire_data)
+# Run null model
+null_retire <- glm(correct ~ 1, family = "binomial"(link = "logit"), data = retire_data)
+summary(null_retire)
 
-# Save the model
-saveRDS(mod_retire, file = "Data/mod_retire.RDS")
+# Calculate MacFadden's pseudo-R^2
+mcf <- 1-(mod_retire@devcomp$cmp["dev"]/null_retire$deviance)
 
-# Open model
-mod_retire <- readRDS(
-  "Data/mod_retire.RDS"
-)
-
+# Get confidence intervals
+library('jtools')
+summ(mod_retire, confint = TRUE, digits =3)
 
 # Now let's use this data to predict the probabilities for each retirement class---
 # correct = seq(0,1,by = 1)

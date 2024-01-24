@@ -5,7 +5,15 @@ library(lubridate) # dates
 library(dplyr)
 
 # Read-in modeling data
-model_data = data.table::fread(file = "E:/LPZ Coordinator/Zooniverse/Data/model_data.csv", data.table = FALSE)
+model_data = data.table::fread(file = "model_data.csv", data.table = FALSE)
+
+# Read in location information
+response <- readRDS(
+  "response.RDS"
+)
+
+response <- response %>% 
+  select(photoName, locationAbbr)
 
 #Let's run models only for those with a zooniverse account
 model_data = model_data %>% 
@@ -15,6 +23,24 @@ model_data = model_data %>%
 model_data = model_data %>% 
   filter(expertID == "Empty")
 
+# get count of number of classifications
+tmp <- split(
+  model_data,
+  factor(model_data$user_id)
+)
+pb <- txtProgressBar(max = length(tmp))
+for(i in 1:length(tmp)){
+  setTxtProgressBar(pb, i)
+  one_df <- tmp[[i]]
+  one_df <- one_df[order(one_df$classification_id),]
+  one_df$class_num <- 1:nrow(one_df)
+  tmp[[i]] <- one_df
+}
+model_data <- dplyr::bind_rows(tmp)
+
+# join data sets
+model_data <- left_join(model_data, response, by = "photoName")
+
 # Log and scale appropriate variables
 model_data$blur_scale = as.numeric(scale(log(model_data$blur)))
 model_data$pielou_scale = as.numeric(scale(model_data$pielou))
@@ -22,26 +48,32 @@ model_data$animal_weight_scale = as.numeric(scale(log(model_data$animal_weight))
 model_data$sp_prop_scale <- as.numeric(scale(log(model_data$sp_prop)))
 model_data$expertID <- factor(model_data$expertID)
 model_data$user_id <- factor(model_data$user_id)
+model_data$locationAbbr <- factor(model_data$locationAbbr)
+model_data$class_num <- as.numeric(scale(model_data$class_num))
 
 # Run model
-empty_mod = glmer(correct ~ pielou_scale + blur_scale + avid_user + (1 | user_id), family = "binomial", data = model_data)
-
-# Save model 
-saveRDS(empty_mod, file = "Data/empty_mod.RDS")
-
-# Open model
-empty_mod <- readRDS(
-  "Data/empty_mod.RDS"
+empty_mod = lme4::glmer(
+  correct ~ pielou_scale + blur_scale + class_num + (1|user_id) + (1|locationAbbr),
+  data = model_data,
+  control = glmerControl(
+    optimizer = "bobyqa"
+  ),
+  family = "binomial"
 )
-
 summary(empty_mod)
 
+# Run null model
+empty_mod_null = glm(correct ~ 1, family = "binomial", data = model_data)
+summary(empty_mod_null)
+
+# Calculate MacFadden's pseudo-R^2
+mcf <- 1-(empty_mod@devcomp$cmp["dev"]/empty_mod_null$deviance)
+
+# Get confidence intervals
 library('jtools')
 summ(empty_mod, confint = TRUE, digits =3)
 
 # Get unscaled coefs------------------------------------------------------------
-# https://stackoverflow.com/questions/24268031/unscale-and-uncenter-glmer-parameters?noredirect=1&lq=1
-
 unsc.vars <- subset(model_data, select=c(blur, pielou, animal_weight, sp_prop))
 sc.vars <-subset(model_data, select=c(blur_scale, pielou_scale, animal_weight_scale, sp_prop_scale))
 
@@ -62,11 +94,6 @@ rescale.coefs <- function(beta,mu,sigma) {
 }
 
 (cc <- rescale.coefs(fixef(empty_mod),mu=c(0,cm),sigma=c(1,csd)))
-
-
-
-# Probabilities
-# https://stackoverflow.com/questions/41384075/r-calculate-and-interpret-odds-ratio-in-logistic-regression#:~:text=The%20coefficient%20returned%20by%20a,1%2Bexp(logit))%20.
 
 # Plotting----------------------------------------------------------------------
 
@@ -95,7 +122,7 @@ pseq <- seq(aw_range[1], aw_range[2], length.out = 400) #sequence of unscaled va
 for_pred <- data.frame(
   pielou_scale = pseq,
   blur_scale = 0,
-  avid_user = 0 #Is zero OK for binary variables? Since we don't center/scale?
+  class_num = 0 
 )
 
 
@@ -116,8 +143,9 @@ to_plot <- predict(
 for_pred_mt <- data.frame(
   pielou_scale = pseq,
   blur_scale = my_average$blur_scale,
-  avid_user = my_average$avid_user,
-  user_id = my_average$user_id
+  class_num = my_average$class_num,
+  user_id = my_average$user_id,
+  locationAbbr = my_average$locationAbbr
 )
 
 # and approximate those intervals, needs lots of simulations
@@ -140,11 +168,10 @@ to_plot_smooth <- apply(
 pielou_probs = as.data.frame(to_plot_smooth)
 mean(pielou_probs$fit)
 
-# Accuracy for evenness = 1 
+# Accuracy for evenness = 0 
 pielou_probs[1,]
-pielou_probs[1,1]
 
-# Accuracy for evenness = 0
+# Accuracy for evenness = 1
 pielou_probs[400,]
 
 pielou_probs[1,1]/pielou_probs[400,1]
@@ -160,7 +187,7 @@ pielou_probs[1,1]/pielou_probs[400,1]
 
 # x-axis on real scale
 
-tiff(file="empty_mod_pielou.jpg", 
+tiff(file="Data/empty_mod_pielou_updated.tiff", 
      width = 6, height = 6, units = "in", res = 600, 
      compression = "lzw")
 
@@ -201,7 +228,7 @@ tiff(file="empty_mod_pielou.jpg",
   
   # add y axis title
   bbplot::axis_text(
-    "User Accuracy",
+    "User accuracy of empty images",
     side = 2,
     line = 2.5,
     cex = 1.25
@@ -234,4 +261,3 @@ tiff(file="empty_mod_pielou.jpg",
 }
 
 dev.off()
-

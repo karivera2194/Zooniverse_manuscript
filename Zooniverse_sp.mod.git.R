@@ -6,20 +6,41 @@ library(dplyr)
 
 
 # Read-in modeling data
-model_data = data.table::fread(file = "E:/LPZ Coordinator/Zooniverse/Data/model_data.csv", data.table = FALSE)
+model_data = data.table::fread(file = "model_data.csv", data.table = FALSE)
 
-model_data_test = model_data %>% 
-  filter(!is.na(user_id))
-
-(dim(model_data_test)[1]/dim(model_data)[1])*100
+# Read in location information
+response <- readRDS(
+  "response.RDS"
+)
 
 #Let's run models only for those with a zooniverse account
 model_data = model_data %>% 
   filter(!is.na(user_id))
 
+# get count of number of classifications
+tmp <- split(
+  model_data,
+  factor(model_data$user_id)
+)
+pb <- txtProgressBar(max = length(tmp))
+for(i in 1:length(tmp)){
+  setTxtProgressBar(pb, i)
+  one_df <- tmp[[i]]
+  one_df <- one_df[order(one_df$classification_id),]
+  one_df$class_num <- 1:nrow(one_df)
+  tmp[[i]] <- one_df
+}
+model_data <- dplyr::bind_rows(tmp)
+
 # Drop columns of species which don't have weights like 'Bird'
 model_data = model_data %>% 
   drop_na(animal_weight)
+
+# join data on photoName
+response <- response %>% 
+  select(photoName, locationAbbr)
+
+model_data <- left_join(model_data, response, by = "photoName")
 
 # Log and scale appropriate variables
 model_data$blur_scale = as.numeric(scale(log(model_data$blur)))
@@ -28,52 +49,26 @@ model_data$animal_weight_scale = as.numeric(scale(log(model_data$animal_weight))
 model_data$sp_prop_scale <- as.numeric(scale(log(model_data$sp_prop)))
 model_data$expertID <- factor(model_data$expertID)
 model_data$user_id <- factor(model_data$user_id)
+model_data$locationAbbr <- factor(model_data$locationAbbr)
+model_data$class_num <- as.numeric(scale(model_data$class_num))
 
-# Run the model
-sp_mod_wt = glmer(correct ~ pielou_scale + blur_scale + avid_user + animal_weight_scale + 
-                    sp_prop_scale + (1 | expertID) + (1 | user_id), family = "binomial", data = model_data)
-
-# Save the output
-saveRDS(sp_mod_wt, file = "Data/sp_mod_wt.RDS")
-
-# Open RDS
-sp_mod_wt <- readRDS(
-  "Data/sp_mod_wt_test.RDS"
-)
+# Run the full model
+sp_mod_wt <- glmer(correct ~ pielou_scale + blur_scale + class_num + animal_weight_scale + 
+                     (1 | expertID) + (1 | user_id) +(1| locationAbbr), family = "binomial", data = model_data)
 
 summary(sp_mod_wt)
 
+# null model
+sp_mod_wt_null <- glm(correct ~ 1, data = model_data, family = "binomial")
+summary(sp_mod_wt_null)
+
+
+# Get confidence intervals
 library('jtools')
 summ(sp_mod_wt, confint = TRUE, digits =3)
 
-# Transforming data
-# https://ourcodingclub.github.io/tutorials/data-scaling/
-
-# Convert the summary table into a dataframe
-mod.summary <- tidy(stork.bc.mod)
-
-# slope
-slope <- (mod.summary$estimate[2]*lambda + 1)^(1/lambda)
-slope <- round(slope, 3)
-
-# conf. intervals
-
-# upper
-# we extract the slope and add the standard error to get the upper CI
-upper_ci <- ((mod.summary$estimate[2]+mod.summary$std.error[2])*lambda + 1)^(1/lambda)
-upper_ci <- round(upper_ci, 3)
-
-# lower
-# we extract the slope and subtract the standard error to get the upper CI
-lower_ci <- ((mod.summary$estimate[2]-mod.summary$std.error[2])*lambda + 1)^(1/lambda)
-lower_ci <- round(lower_ci, 3)
-
-
-#https://towardsdatascience.com/how-to-interpret-the-odds-ratio-with-categorical-variables-in-logistic-regression-5bb38e3fc6a8
-
-# Pielou example
-# a unit increase in pielou decreased the odds of correctly identifying a species by 67.2%
-1-(exp(-1.115156))
+# Calculate MacFadden's pseudo-R^2
+mcf <- 1-(sp_mod_wt@devcomp$cmp["dev"]/sp_mod_wt_null$deviance)
 
 # Plotting----------------------------------------------------------------------
 
@@ -96,17 +91,14 @@ aw_range <- range(model_data$animal_weight_scale)
 pseq_real <- seq(aw_range_real[1], aw_range_real[2], length.out = 400) #sequence of real variables
 pseq <- seq(aw_range[1], aw_range[2], length.out = 400) #sequence of unscaled variables
 
-saveRDS(pseq_real, file = "Data/pseq_real.RDS")
-saveRDS(pseq, file = "Data/pseq.RDS")
-
 # Create the prediction data.frame, including predictions for non-avid users
 # The mean of these variables should be close to '0' since we centered and scalesd
 for_pred <- data.frame(
   pielou_scale = 0,
   blur_scale = 0,
   animal_weight_scale = pseq, #(pseq - mean(model_data$animal_weight_log)) / sd(model_data$animal_weight_log),
-  avid_user = 0,
-  sp_prop_scale = 0
+  class_num = 0
+  #  sp_prop_scale = 0
 )
 
 # this just gets the best fit line, we need to get 95% CI,
@@ -126,10 +118,11 @@ for_pred_mt <- data.frame(
   pielou_scale = 0,
   blur_scale = 0,
   animal_weight_scale = pseq, #(pseq - mean(model_data$animal_weight_log)) / sd(model_data$animal_weight_log),
-  avid_user = my_average$avid_user,
+  class_num = my_average$class_num,
   expertID = my_average$expertID,
   user_id = my_average$user_id,
-  sp_prop_scale = my_average$sp_prop_scale
+  locationAbbr = my_average$locationAbbr
+  #sp_prop_scale = my_average$sp_prop_scale
 )
 
 # and approximate those intervals, needs lots of simulations
@@ -157,7 +150,7 @@ to_plot_smooth <- apply(
   function(each_col) lowess(x = pseq, y = each_col)$y
 )
 
-saveRDS(to_plot_smooth, file = "Data/to_plot_smooth.RDS")
+#saveRDS(to_plot_smooth, file = "Data/to_plot_smooth.RDS")
 
 # get prop success for each species
 weight_prop <- model_data %>% 
@@ -167,8 +160,6 @@ weight_prop <- model_data %>%
     pc = mean(correct),
     aws = unique(animal_weight)) %>% 
   data.frame()
-
-saveRDS(weight_prop, file = "Data/weight_prop.RDS")
 
 # look at model coef from species specific $coef func and look for large magnitude (take abs value of coef)
 # sort and look at top 5
@@ -187,15 +178,11 @@ sp.intercept = sp.intercept %>%
 
 
 model_fix = coef(summary(sp_mod_wt))
-write.csv(model_fix, "Data/model_fix.csv")
-
-# Get distance from each species prob. point to the best fit line
-test = merge(pseq_real, to_plot_smooth)
 
 # and now we are ready to plot using bbplot, it helps to know the range
 #  for the x and y axis (it makes better plots I've found).
 
-tiff(file="sp_mod_wt_weight.tiff", 
+tiff(file="sp_mod_wt_weight_updated.tiff", 
      width = 6, height = 6, units = "in", res = 600, 
      compression = "lzw")
 
@@ -236,7 +223,7 @@ tiff(file="sp_mod_wt_weight.tiff",
   
   # add y axis title
   bbplot::axis_text(
-    "User Accuracy",
+    "User accuracy of species images",
     side = 2,
     line = 2.5,
     cex = 1.25
@@ -288,8 +275,8 @@ for_pred <- data.frame(
   pielou_scale = pseq,
   blur_scale = 0,
   animal_weight_scale = 0,
-  avid_user = 0,
-  sp_prop_scale = 0
+  class_num  = 0
+  #sp_prop_scale = 0
 )
 
 # this just gets the best fit line, we need to get 95% CI,
@@ -314,10 +301,11 @@ for_pred_mt <- data.frame(
   pielou_scale = pseq,
   blur_scale = 0, #Why is this zero and not another average?
   animal_weight_scale = my_average$animal_weight_scale,
-  avid_user = my_average$avid_user,
+  class_num  = my_average$class_num ,
   expertID = my_average$expertID,
   user_id = my_average$user,
-  sp_prop_scale = my_average$sp_prop_scale
+  locationAbbr = my_average$locationAbbr 
+  #sp_prop_scale = my_average$sp_prop_scale
 )
 
 
@@ -356,7 +344,7 @@ saveRDS(to_plot_smooth, file = "Data/to_plot_smooth.RDS")
 #  for the x and y axis (it makes better plots I've found).
 
 
-tiff(file="sp_mod_wt_pielou.tiff", 
+tiff(file="sp_mod_wt_pielou_updated.tiff", 
      width = 6, height = 6, units = "in", res = 600, 
      compression = "lzw")
 {
@@ -396,7 +384,7 @@ tiff(file="sp_mod_wt_pielou.tiff",
   
   # add y axis title
   bbplot::axis_text(
-    "User Accuracy",
+    "User accuracy of species images",
     side = 2,
     line = 2.5,
     cex = 1.25
@@ -421,4 +409,3 @@ tiff(file="sp_mod_wt_pielou.tiff",
 }
 
 dev.off()
-
